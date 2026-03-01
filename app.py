@@ -2,7 +2,7 @@ from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-# Esta lista guardará los datos de todos los amigos durante la fiesta
+# Esta lista guardará los datos de todos los amigos
 amigos = []
 
 # Diseño de la aplicación (Modo noche / Fiesta)
@@ -18,25 +18,33 @@ HTML = """
         .container { background: #2a2a40; max-width: 500px; margin: auto; padding: 20px; border-radius: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.5); }
         input, select, button { width: 90%; margin: 10px 0; padding: 10px; border-radius: 5px; border: none; font-size: 16px; box-sizing: border-box; }
         input, select { background-color: #3e3e5c; color: white; }
-        button { background-color: #ff4757; color: white; font-weight: bold; cursor: pointer; margin-top: 15px; }
-        button:hover { background-color: #ff6b81; }
+        button { background-color: #2ed573; color: white; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        button:hover { background-color: #26b360; }
+        
+        .btn-borrar { background-color: #ff4757; }
+        .btn-borrar:hover { background-color: #ff6b81; }
+
         .lista-amigos { margin-top: 30px; text-align: left; }
         .amigo-card { background: #3e3e5c; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 6px solid #ccc; }
-        /* Colores según el estado elegido */
+        
         .estado-Sobrio { border-color: #2ed573; }
         .estado-Puntillo { border-color: #1e90ff; }
         .estado-Borracho { border-color: #ffa502; }
         .estado-Ebrio { border-color: #ff4757; }
+        
         h3 { border-bottom: 1px solid #555; padding-bottom: 10px; }
+        .zona-reset { margin-top: 40px; padding: 15px; background-color: #222233; border-radius: 8px; border: 1px dashed #555; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>Muro de la Fiesta 🍻</h2>
-    <p>Apunta lo que llevas y elige tu estado para ver quién aguanta más.</p>
+    <p>Apunta lo que llevas y elige tu estado.</p>
 
     <form method="POST">
+        <input type="hidden" name="accion" value="actualizar">
+        
         <label>Tu Nombre:</label>
         <input type="text" name="nombre" required placeholder="Ej. Juan">
 
@@ -73,6 +81,18 @@ HTML = """
             {% endfor %}
         {% endif %}
     </div>
+
+    <div class="zona-reset">
+        <h4>Resetear la Fiesta 🧹</h4>
+        <form method="POST" style="display: flex; flex-direction: column; align-items: center;">
+            <input type="hidden" name="accion" value="resetear">
+            <input type="password" name="password" placeholder="Contraseña..." required style="width: 80%;">
+            <button type="submit" class="btn-borrar" style="width: 80%;">Borrar Lista</button>
+        </form>
+        {% if error %}
+            <p style="color: #ff4757; font-size: 14px; margin-top: 10px;">{{ error }}</p>
+        {% endif %}
+    </div>
 </div>
 
 </body>
@@ -81,37 +101,48 @@ HTML = """
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    mensaje_error = ""
+
     if request.method == 'POST':
-        # 1. Recogemos lo que el usuario ha rellenado
-        nombre = request.form['nombre']
-        cervezas = int(request.form['cervezas'])
-        cubatas = int(request.form['cubatas'])
-        chupitos = int(request.form['chupitos'])
-        estado = request.form['estado'] # Aquí recogen el estado que han elegido a mano
+        accion = request.form.get('accion')
 
-        # 2. Buscamos si el amigo ya existe en la lista para actualizarlo
-        encontrado = False
-        for amigo in amigos:
-            if amigo['nombre'].lower() == nombre.lower():
-                amigo['cervezas'] = cervezas
-                amigo['cubatas'] = cubatas
-                amigo['chupitos'] = chupitos
-                amigo['estado'] = estado
-                encontrado = True
-                break
-        
-        # 3. Si es un amigo nuevo que no estaba en la lista, lo añadimos
-        if not encontrado:
-            amigos.append({
-                'nombre': nombre,
-                'cervezas': cervezas,
-                'cubatas': cubatas,
-                'chupitos': chupitos,
-                'estado': estado
-            })
+        # Si el usuario le ha dado al botón de Resetear
+        if accion == 'resetear':
+            password = request.form.get('password')
+            # AQUÍ PUEDES CAMBIAR LA CONTRASEÑA
+            if password == '1234':
+                amigos.clear()
+            else:
+                mensaje_error = "Contraseña incorrecta ❌"
 
-    # Mostramos la página web pasándole la lista de amigos
-    return render_template_string(HTML, amigos=amigos)
+        # Si el usuario está añadiendo sus datos
+        elif accion == 'actualizar':
+            nombre = request.form.get('nombre')
+            cervezas = int(request.form.get('cervezas', 0))
+            cubatas = int(request.form.get('cubatas', 0))
+            chupitos = int(request.form.get('chupitos', 0))
+            estado = request.form.get('estado')
+
+            encontrado = False
+            for amigo in amigos:
+                if amigo['nombre'].lower() == nombre.lower():
+                    amigo['cervezas'] = cervezas
+                    amigo['cubatas'] = cubatas
+                    amigo['chupitos'] = chupitos
+                    amigo['estado'] = estado
+                    encontrado = True
+                    break
+            
+            if not encontrado:
+                amigos.append({
+                    'nombre': nombre,
+                    'cervezas': cervezas,
+                    'cubatas': cubatas,
+                    'chupitos': chupitos,
+                    'estado': estado
+                })
+
+    return render_template_string(HTML, amigos=amigos, error=mensaje_error)
 
 if __name__ == '__main__':
     app.run(debug=True)
