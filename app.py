@@ -193,4 +193,32 @@ def sumar():
         conn = get_db()
         # Incrementamos la bebida correspondiente y actualizamos la hora
         sql = f'UPDATE amigos SET {bebida} = {bebida} + 1, hora = ? WHERE id = ?'
-        conn.execute(sql, (hora_actual,
+        conn.execute(sql, (hora_actual, amigo_id))
+        conn.commit()
+        conn.close()
+        
+    return redirect(url_for('index'))
+
+@app.route('/estado', methods=['POST'])
+def cambiar_estado():
+    amigo_id = request.form['id']
+    nuevo_estado = request.form['estado']
+    hora_actual = datetime.now().strftime("%H:%M")
+    
+    conn = get_db()
+    conn.execute('UPDATE amigos SET estado = ?, hora = ? WHERE id = ?', (nuevo_estado, hora_actual, amigo_id))
+    conn.commit()
+    conn.close()
+    
+    return redirect(url_for('index'))
+
+@app.route('/resetear', methods=['POST'])
+def resetear():
+    conn = get_db()
+    conn.execute('DELETE FROM amigos') # Borra todo el contenido de la tabla
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    app.run(debug=True)
