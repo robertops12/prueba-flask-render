@@ -1,4 +1,5 @@
 import sqlite3
+import json
 from flask import Flask, request, render_template_string, redirect, url_for
 from datetime import datetime
 
@@ -8,7 +9,6 @@ app = Flask(__name__)
 def init_db():
     conn = sqlite3.connect('fiesta.db')
     c = conn.cursor()
-    # Creamos la tabla si no existe
     c.execute('''
         CREATE TABLE IF NOT EXISTS amigos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,13 +25,12 @@ def init_db():
 
 init_db()
 
-# Función auxiliar para conectarnos a la BD en cada petición
 def get_db():
     conn = sqlite3.connect('fiesta.db')
-    conn.row_factory = sqlite3.Row # Para poder acceder a las columnas por nombre
+    conn.row_factory = sqlite3.Row
     return conn
 
-# --- DISEÑO DE LA APLICACIÓN ---
+# --- DISEÑO DE LA APLICACIÓN CON CHART.JS ---
 HTML = """
 <!DOCTYPE html>
 <html lang="es">
@@ -39,13 +38,14 @@ HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Party Tracker Pro DB 🍻</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #12121c; --card-bg: #1e1e2f; --input-bg: #2a2a40;
             --text-main: #ffffff; --text-muted: #a0a0b5;
             --accent: #ff4757; --success: #2ed573;
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
         .container { max-width: 500px; margin: auto; }
         
         .dashboard { display: flex; justify-content: space-between; background: var(--card-bg); padding: 15px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
@@ -62,7 +62,6 @@ HTML = """
         .amigo-nombre { font-size: 1.2em; font-weight: bold; }
         .badge-hora { background: #000; padding: 4px 8px; border-radius: 12px; font-size: 11px; color: var(--text-muted); }
         
-        /* Controles de bebida (+1) */
         .controles-bebidas { display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-bottom: 15px; }
         .bebida-item { display: flex; align-items: center; gap: 8px; font-size: 1.1em; }
         .btn-plus { background: var(--accent); color: white; border: none; border-radius: 5px; width: 30px; height: 30px; font-size: 18px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
@@ -80,13 +79,20 @@ HTML = """
 
 <div class="container">
     <h2 style="text-align: center; margin-bottom: 5px;">Party Tracker Pro 🍻</h2>
-    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Base de Datos SQLite Activa</p>
+    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Estadísticas en tiempo real</p>
 
     <div class="dashboard">
         <div class="stat-box"><span>{{ totales.cervezas }}</span><small>Cervezas</small></div>
         <div class="stat-box"><span>{{ totales.cubatas }}</span><small>Cubatas</small></div>
         <div class="stat-box"><span>{{ totales.chupitos }}</span><small>Chupitos</small></div>
     </div>
+
+    {% if nombres_json != '[]' %}
+    <div class="card">
+        <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">🏆 Ranking de Aguante</h3>
+        <canvas id="rankingChart"></canvas>
+    </div>
+    {% endif %}
 
     <div class="card">
         <form method="POST" action="/agregar" style="margin: 0;">
@@ -140,63 +146,126 @@ HTML = """
     </div>
 </div>
 
+<script>
+    // Solo dibujamos el gráfico si hay datos
+    const nombres = {{ nombres_json | safe }};
+    if (nombres.length > 0) {
+        const ctx = document.getElementById('rankingChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: nombres,
+                datasets: [
+                    {
+                        label: '🍺 Cervezas',
+                        data: {{ cervezas_json | safe }},
+                        backgroundColor: '#f1c40f' // Amarillo
+                    },
+                    {
+                        label: '🍹 Cubatas',
+                        data: {{ cubatas_json | safe }},
+                        backgroundColor: '#e74c3c' // Rojo
+                    },
+                    {
+                        label: '🥃 Chupitos',
+                        data: {{ chupitos_json | safe }},
+                        backgroundColor: '#e67e22' // Naranja
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { 
+                        stacked: true, 
+                        ticks: { color: '#a0a0b5' },
+                        grid: { color: '#333' }
+                    },
+                    y: { 
+                        stacked: true, 
+                        beginAtZero: true,
+                        ticks: { color: '#a0a0b5', stepSize: 1 },
+                        grid: { color: '#333' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#ffffff' } }
+                }
+            }
+        });
+    }
+</script>
+
 </body>
 </html>
 """
 
-# --- RUTAS DE LA APLICACIÓN ---
-
+# --- RUTAS ---
 @app.route('/')
 def index():
     conn = get_db()
-    # Obtenemos todos los amigos ordenados por la última actualización
+    
+    # 1. Obtener amigos para el Feed (Ordenados por hora de actualización)
     amigos = conn.execute('SELECT * FROM amigos ORDER BY hora DESC').fetchall()
     
-    # Calculamos los totales para el dashboard
+    # 2. Obtener datos para el Dashboard General (Sumas totales)
     totales = conn.execute('SELECT SUM(cervezas) as cervezas, SUM(cubatas) as cubatas, SUM(chupitos) as chupitos FROM amigos').fetchone()
-    
-    # Si la bd está vacía, la suma da None, lo pasamos a 0
     totales_dict = {
         'cervezas': totales['cervezas'] or 0,
         'cubatas': totales['cubatas'] or 0,
         'chupitos': totales['chupitos'] or 0
     }
     
+    # 3. Obtener el TOP para el Gráfico (Ordenado por total de bebidas)
+    top_query = '''
+        SELECT nombre, cervezas, cubatas, chupitos 
+        FROM amigos 
+        ORDER BY (cervezas + cubatas + chupitos) DESC
+    '''
+    top_amigos = conn.execute(top_query).fetchall()
+    
+    # Preparamos los datos en formato JSON para mandárselos a JavaScript (Chart.js)
+    nombres_lista = [a['nombre'] for a in top_amigos]
+    cervezas_lista = [a['cervezas'] for a in top_amigos]
+    cubatas_lista = [a['cubatas'] for a in top_amigos]
+    chupitos_lista = [a['chupitos'] for a in top_amigos]
+    
     conn.close()
-    return render_template_string(HTML, amigos=amigos, totales=totales_dict)
+    
+    return render_template_string(HTML, 
+                                  amigos=amigos, 
+                                  totales=totales_dict,
+                                  nombres_json=json.dumps(nombres_lista),
+                                  cervezas_json=json.dumps(cervezas_lista),
+                                  cubatas_json=json.dumps(cubatas_lista),
+                                  chupitos_json=json.dumps(chupitos_lista))
 
 @app.route('/agregar', methods=['POST'])
 def agregar():
     nombre = request.form['nombre'].strip()
     hora_actual = datetime.now().strftime("%H:%M")
-    
     if nombre:
         conn = get_db()
         try:
             conn.execute('INSERT INTO amigos (nombre, hora) VALUES (?, ?)', (nombre, hora_actual))
             conn.commit()
         except sqlite3.IntegrityError:
-            pass # Si el nombre ya existe, lo ignoramos para que no pete
+            pass 
         finally:
             conn.close()
-            
     return redirect(url_for('index'))
 
 @app.route('/sumar', methods=['POST'])
 def sumar():
     amigo_id = request.form['id']
-    bebida = request.form['bebida'] # 'cervezas', 'cubatas' o 'chupitos'
+    bebida = request.form['bebida'] 
     hora_actual = datetime.now().strftime("%H:%M")
-    
-    # Por seguridad en bases de datos, comprobamos que el nombre de la columna es correcto
     if bebida in ['cervezas', 'cubatas', 'chupitos']:
         conn = get_db()
-        # Incrementamos la bebida correspondiente y actualizamos la hora
         sql = f'UPDATE amigos SET {bebida} = {bebida} + 1, hora = ? WHERE id = ?'
         conn.execute(sql, (hora_actual, amigo_id))
         conn.commit()
         conn.close()
-        
     return redirect(url_for('index'))
 
 @app.route('/estado', methods=['POST'])
@@ -204,18 +273,16 @@ def cambiar_estado():
     amigo_id = request.form['id']
     nuevo_estado = request.form['estado']
     hora_actual = datetime.now().strftime("%H:%M")
-    
     conn = get_db()
     conn.execute('UPDATE amigos SET estado = ?, hora = ? WHERE id = ?', (nuevo_estado, hora_actual, amigo_id))
     conn.commit()
     conn.close()
-    
     return redirect(url_for('index'))
 
 @app.route('/resetear', methods=['POST'])
 def resetear():
     conn = get_db()
-    conn.execute('DELETE FROM amigos') # Borra todo el contenido de la tabla
+    conn.execute('DELETE FROM amigos')
     conn.commit()
     conn.close()
     return redirect(url_for('index'))
