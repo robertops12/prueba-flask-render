@@ -30,25 +30,19 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- LÓGICA DE EMBRIAGUEZ AUTOMÁTICA (BASADA EN CIENCIA REAL) ---
+# --- LÓGICA DE EMBRIAGUEZ (CIENCIA REAL) ---
 def calcular_estado(cervezas, cubatas, chupitos):
-    # 1. Calculamos los gramos de alcohol puro
     gramos_alcohol = (cervezas * 13) + (cubatas * 16) + (chupitos * 10)
-    
-    # 2. Fórmula de Widmark simplificada para un adulto promedio de 70kg
-    # BAC = gramos_de_alcohol / (peso * factor_de_distribucion)
-    # Asumimos un peso medio de 70kg y un factor medio de 0.6 para equilibrar sexos
     bac_estimado = gramos_alcohol / (70 * 0.6)
     
-    # 3. Asignamos el estado según los niveles clínicos reales de alcohol en sangre
     if bac_estimado < 0.25:
-        return 'Sobrio'       # Sobrio o casi imperceptible
+        return 'Sobrio'
     elif bac_estimado < 0.60:
-        return 'Puntillo'     # Euforia y desinhibición leve
+        return 'Puntillo'
     elif bac_estimado < 1.50:
-        return 'Borracho'     # Pérdida de coordinación y reflejos
+        return 'Borracho'
     else:
-        return 'Ebrio'        # Intoxicación severa (Blackout)
+        return 'Ebrio'
 
 # --- DISEÑO DE LA APLICACIÓN ---
 HTML = """
@@ -63,7 +57,7 @@ HTML = """
         :root {
             --bg-color: #12121c; --card-bg: #1e1e2f; --input-bg: #2a2a40;
             --text-main: #ffffff; --text-muted: #a0a0b5;
-            --accent: #ff4757; --success: #2ed573;
+            --accent: #ff4757; --success: #2ed573; --minus-btn: #575775;
         }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
         .container { max-width: 500px; margin: auto; }
@@ -85,9 +79,13 @@ HTML = """
         .estado-label { font-size: 0.95em; margin-bottom: 15px; font-style: italic; color: #ccc; }
         
         .controles-bebidas { display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; }
-        .bebida-item { display: flex; align-items: center; gap: 8px; font-size: 1.1em; }
-        .btn-plus { background: var(--accent); color: white; border: none; border-radius: 5px; width: 30px; height: 30px; font-size: 18px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
-        .btn-plus:active { transform: scale(0.9); }
+        .bebida-item { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 1.1em; width: 30%; }
+        
+        .botones-accion { display: flex; gap: 5px; }
+        .btn-plus, .btn-minus { color: white; border: none; border-radius: 5px; width: 32px; height: 32px; font-size: 18px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        .btn-plus { background: var(--accent); }
+        .btn-minus { background: var(--minus-btn); }
+        .btn-plus:active, .btn-minus:active { transform: scale(0.9); }
         
         .estado-Sobrio { border-color: var(--success); }
         .estado-Puntillo { border-color: #1e90ff; }
@@ -99,7 +97,7 @@ HTML = """
 
 <div class="container">
     <h2 style="text-align: center; margin-bottom: 5px;">Party Tracker Pro 🍻</h2>
-    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Cálculo Clínico (Widmark)</p>
+    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Control Total de la Noche</p>
 
     <div class="dashboard">
         <div class="stat-box"><span>{{ totales.cervezas }}</span><small>Cervezas</small></div>
@@ -141,16 +139,25 @@ HTML = """
             
             <div class="controles-bebidas">
                 <div class="bebida-item">
-                    {{ a['cervezas'] }} 🍺
-                    <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cervezas"><button type="submit" class="btn-plus">+</button></form>
+                    <span>{{ a['cervezas'] }} 🍺</span>
+                    <div class="botones-accion">
+                        <form method="POST" action="/restar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cervezas"><button type="submit" class="btn-minus">-</button></form>
+                        <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cervezas"><button type="submit" class="btn-plus">+</button></form>
+                    </div>
                 </div>
                 <div class="bebida-item">
-                    {{ a['cubatas'] }} 🍹
-                    <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cubatas"><button type="submit" class="btn-plus">+</button></form>
+                    <span>{{ a['cubatas'] }} 🍹</span>
+                    <div class="botones-accion">
+                        <form method="POST" action="/restar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cubatas"><button type="submit" class="btn-minus">-</button></form>
+                        <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="cubatas"><button type="submit" class="btn-plus">+</button></form>
+                    </div>
                 </div>
                 <div class="bebida-item">
-                    {{ a['chupitos'] }} 🥃
-                    <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="chupitos"><button type="submit" class="btn-plus">+</button></form>
+                    <span>{{ a['chupitos'] }} 🥃</span>
+                    <div class="botones-accion">
+                        <form method="POST" action="/restar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="chupitos"><button type="submit" class="btn-minus">-</button></form>
+                        <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="chupitos"><button type="submit" class="btn-plus">+</button></form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -250,17 +257,44 @@ def sumar():
         conn = get_db()
         amigo = conn.execute('SELECT cervezas, cubatas, chupitos FROM amigos WHERE id = ?', (amigo_id,)).fetchone()
         
-        c = amigo['cervezas']
-        cu = amigo['cubatas']
-        ch = amigo['chupitos']
+        c, cu, ch = amigo['cervezas'], amigo['cubatas'], amigo['chupitos']
         
         if bebida == 'cervezas': c += 1
         elif bebida == 'cubatas': cu += 1
         elif bebida == 'chupitos': ch += 1
         
-        # Llamamos a nuestra nueva función basada en ciencia
         nuevo_estado = calcular_estado(c, cu, ch)
+        sql = f'UPDATE amigos SET {bebida} = ?, estado = ?, hora = ? WHERE id = ?'
+        nueva_cantidad = c if bebida == 'cervezas' else (cu if bebida == 'cubatas' else ch)
         
+        conn.execute(sql, (nueva_cantidad, nuevo_estado, hora_actual, amigo_id))
+        conn.commit()
+        conn.close()
+        
+    return redirect(url_for('index'))
+
+@app.route('/restar', methods=['POST'])
+def restar():
+    amigo_id = request.form['id']
+    bebida = request.form['bebida'] 
+    hora_actual = datetime.now().strftime("%H:%M")
+    
+    if bebida in ['cervezas', 'cubatas', 'chupitos']:
+        conn = get_db()
+        amigo = conn.execute('SELECT cervezas, cubatas, chupitos FROM amigos WHERE id = ?', (amigo_id,)).fetchone()
+        
+        c, cu, ch = amigo['cervezas'], amigo['cubatas'], amigo['chupitos']
+        
+        # Restamos solo si tiene más de 0
+        if bebida == 'cervezas' and c > 0: c -= 1
+        elif bebida == 'cubatas' and cu > 0: cu -= 1
+        elif bebida == 'chupitos' and ch > 0: ch -= 1
+        else:
+            # Si intenta restar cuando ya está en 0, no hacemos nada
+            conn.close()
+            return redirect(url_for('index'))
+            
+        nuevo_estado = calcular_estado(c, cu, ch)
         sql = f'UPDATE amigos SET {bebida} = ?, estado = ?, hora = ? WHERE id = ?'
         nueva_cantidad = c if bebida == 'cervezas' else (cu if bebida == 'cubatas' else ch)
         
