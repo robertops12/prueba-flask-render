@@ -30,19 +30,25 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- LÓGICA DE EMBRIAGUEZ AUTOMÁTICA ---
+# --- LÓGICA DE EMBRIAGUEZ AUTOMÁTICA (BASADA EN CIENCIA REAL) ---
 def calcular_estado(cervezas, cubatas, chupitos):
-    # Sistema de puntos: Cerveza (1), Cubata (2), Chupito (1)
-    puntos = (cervezas * 1) + (cubatas * 2) + (chupitos * 1)
+    # 1. Calculamos los gramos de alcohol puro
+    gramos_alcohol = (cervezas * 13) + (cubatas * 16) + (chupitos * 10)
     
-    if puntos == 0:
-        return 'Sobrio'
-    elif puntos <= 3:
-        return 'Puntillo'
-    elif puntos <= 7:
-        return 'Borracho'
+    # 2. Fórmula de Widmark simplificada para un adulto promedio de 70kg
+    # BAC = gramos_de_alcohol / (peso * factor_de_distribucion)
+    # Asumimos un peso medio de 70kg y un factor medio de 0.6 para equilibrar sexos
+    bac_estimado = gramos_alcohol / (70 * 0.6)
+    
+    # 3. Asignamos el estado según los niveles clínicos reales de alcohol en sangre
+    if bac_estimado < 0.25:
+        return 'Sobrio'       # Sobrio o casi imperceptible
+    elif bac_estimado < 0.60:
+        return 'Puntillo'     # Euforia y desinhibición leve
+    elif bac_estimado < 1.50:
+        return 'Borracho'     # Pérdida de coordinación y reflejos
     else:
-        return 'Ebrio'
+        return 'Ebrio'        # Intoxicación severa (Blackout)
 
 # --- DISEÑO DE LA APLICACIÓN ---
 HTML = """
@@ -93,7 +99,7 @@ HTML = """
 
 <div class="container">
     <h2 style="text-align: center; margin-bottom: 5px;">Party Tracker Pro 🍻</h2>
-    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Cálculo Automático de Estado</p>
+    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Cálculo Clínico (Widmark)</p>
 
     <div class="dashboard">
         <div class="stat-box"><span>{{ totales.cervezas }}</span><small>Cervezas</small></div>
@@ -226,7 +232,6 @@ def agregar():
     if nombre:
         conn = get_db()
         try:
-            # Por defecto, todos empiezan "Sobrios"
             conn.execute('INSERT INTO amigos (nombre, hora, estado) VALUES (?, ?, ?)', (nombre, hora_actual, 'Sobrio'))
             conn.commit()
         except sqlite3.IntegrityError:
@@ -243,25 +248,20 @@ def sumar():
     
     if bebida in ['cervezas', 'cubatas', 'chupitos']:
         conn = get_db()
-        
-        # 1. Obtenemos lo que llevaba bebido hasta ahora
         amigo = conn.execute('SELECT cervezas, cubatas, chupitos FROM amigos WHERE id = ?', (amigo_id,)).fetchone()
+        
         c = amigo['cervezas']
         cu = amigo['cubatas']
         ch = amigo['chupitos']
         
-        # 2. Le sumamos la bebida nueva que acaba de pulsar
         if bebida == 'cervezas': c += 1
         elif bebida == 'cubatas': cu += 1
         elif bebida == 'chupitos': ch += 1
         
-        # 3. Calculamos automáticamente su nuevo nivel
+        # Llamamos a nuestra nueva función basada en ciencia
         nuevo_estado = calcular_estado(c, cu, ch)
         
-        # 4. Actualizamos la base de datos con la nueva bebida y el nuevo estado
         sql = f'UPDATE amigos SET {bebida} = ?, estado = ?, hora = ? WHERE id = ?'
-        
-        # Dependiendo de la bebida, pasamos la variable correcta al SQL
         nueva_cantidad = c if bebida == 'cervezas' else (cu if bebida == 'cubatas' else ch)
         
         conn.execute(sql, (nueva_cantidad, nuevo_estado, hora_actual, amigo_id))
