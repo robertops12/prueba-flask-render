@@ -30,7 +30,21 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- DISEÑO DE LA APLICACIÓN CON CHART.JS ---
+# --- LÓGICA DE EMBRIAGUEZ AUTOMÁTICA ---
+def calcular_estado(cervezas, cubatas, chupitos):
+    # Sistema de puntos: Cerveza (1), Cubata (2), Chupito (1)
+    puntos = (cervezas * 1) + (cubatas * 2) + (chupitos * 1)
+    
+    if puntos == 0:
+        return 'Sobrio'
+    elif puntos <= 3:
+        return 'Puntillo'
+    elif puntos <= 7:
+        return 'Borracho'
+    else:
+        return 'Ebrio'
+
+# --- DISEÑO DE LA APLICACIÓN ---
 HTML = """
 <!DOCTYPE html>
 <html lang="es">
@@ -58,16 +72,16 @@ HTML = """
         button.btn-main { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--success); color: white; font-weight: bold; cursor: pointer; }
         
         .amigo-card { background: var(--input-bg); padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 5px solid #ccc; transition: 0.3s; }
-        .amigo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .amigo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         .amigo-nombre { font-size: 1.2em; font-weight: bold; }
         .badge-hora { background: #000; padding: 4px 8px; border-radius: 12px; font-size: 11px; color: var(--text-muted); }
         
-        .controles-bebidas { display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-bottom: 15px; }
+        .estado-label { font-size: 0.95em; margin-bottom: 15px; font-style: italic; color: #ccc; }
+        
+        .controles-bebidas { display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; }
         .bebida-item { display: flex; align-items: center; gap: 8px; font-size: 1.1em; }
         .btn-plus { background: var(--accent); color: white; border: none; border-radius: 5px; width: 30px; height: 30px; font-size: 18px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
         .btn-plus:active { transform: scale(0.9); }
-        
-        select { width: 100%; padding: 10px; border-radius: 6px; border: none; background: #3e3e5c; color: white; font-size: 15px; cursor: pointer; }
         
         .estado-Sobrio { border-color: var(--success); }
         .estado-Puntillo { border-color: #1e90ff; }
@@ -79,7 +93,7 @@ HTML = """
 
 <div class="container">
     <h2 style="text-align: center; margin-bottom: 5px;">Party Tracker Pro 🍻</h2>
-    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Estadísticas en tiempo real</p>
+    <p style="text-align: center; color: var(--text-muted); margin-top: 0; margin-bottom: 20px;">Cálculo Automático de Estado</p>
 
     <div class="dashboard">
         <div class="stat-box"><span>{{ totales.cervezas }}</span><small>Cervezas</small></div>
@@ -111,6 +125,14 @@ HTML = """
                 <span class="badge-hora">Últ. act: {{ a['hora'] }}</span>
             </div>
             
+            <div class="estado-label">
+                {% if a['estado'] == 'Sobrio' %} Fresquísimo / Sobrio 💧
+                {% elif a['estado'] == 'Puntillo' %} Con el puntillo alegre 🕺
+                {% elif a['estado'] == 'Borracho' %} Borracho / Perdiendo los papeles 🥴
+                {% elif a['estado'] == 'Ebrio' %} Ebrio Extremo 💀
+                {% endif %}
+            </div>
+            
             <div class="controles-bebidas">
                 <div class="bebida-item">
                     {{ a['cervezas'] }} 🍺
@@ -125,16 +147,6 @@ HTML = """
                     <form method="POST" action="/sumar" style="margin:0;"><input type="hidden" name="id" value="{{ a['id'] }}"><input type="hidden" name="bebida" value="chupitos"><button type="submit" class="btn-plus">+</button></form>
                 </div>
             </div>
-
-            <form method="POST" action="/estado" style="margin:0;">
-                <input type="hidden" name="id" value="{{ a['id'] }}">
-                <select name="estado" onchange="this.form.submit()">
-                    <option value="Sobrio" {% if a['estado'] == 'Sobrio' %}selected{% endif %}>Fresquísimo / Sobrio 💧</option>
-                    <option value="Puntillo" {% if a['estado'] == 'Puntillo' %}selected{% endif %}>Con el puntillo alegre 🕺</option>
-                    <option value="Borracho" {% if a['estado'] == 'Borracho' %}selected{% endif %}>Borracho / Perdiendo los papeles 🥴</option>
-                    <option value="Ebrio" {% if a['estado'] == 'Ebrio' %}selected{% endif %}>Ebrio Extremo 💀</option>
-                </select>
-            </form>
         </div>
         {% endfor %}
     {% endif %}
@@ -147,7 +159,6 @@ HTML = """
 </div>
 
 <script>
-    // Solo dibujamos el gráfico si hay datos
     const nombres = {{ nombres_json | safe }};
     if (nombres.length > 0) {
         const ctx = document.getElementById('rankingChart').getContext('2d');
@@ -156,41 +167,18 @@ HTML = """
             data: {
                 labels: nombres,
                 datasets: [
-                    {
-                        label: '🍺 Cervezas',
-                        data: {{ cervezas_json | safe }},
-                        backgroundColor: '#f1c40f' // Amarillo
-                    },
-                    {
-                        label: '🍹 Cubatas',
-                        data: {{ cubatas_json | safe }},
-                        backgroundColor: '#e74c3c' // Rojo
-                    },
-                    {
-                        label: '🥃 Chupitos',
-                        data: {{ chupitos_json | safe }},
-                        backgroundColor: '#e67e22' // Naranja
-                    }
+                    { label: '🍺 Cervezas', data: {{ cervezas_json | safe }}, backgroundColor: '#f1c40f' },
+                    { label: '🍹 Cubatas', data: {{ cubatas_json | safe }}, backgroundColor: '#e74c3c' },
+                    { label: '🥃 Chupitos', data: {{ chupitos_json | safe }}, backgroundColor: '#e67e22' }
                 ]
             },
             options: {
                 responsive: true,
                 scales: {
-                    x: { 
-                        stacked: true, 
-                        ticks: { color: '#a0a0b5' },
-                        grid: { color: '#333' }
-                    },
-                    y: { 
-                        stacked: true, 
-                        beginAtZero: true,
-                        ticks: { color: '#a0a0b5', stepSize: 1 },
-                        grid: { color: '#333' }
-                    }
+                    x: { stacked: true, ticks: { color: '#a0a0b5' }, grid: { color: '#333' } },
+                    y: { stacked: true, beginAtZero: true, ticks: { color: '#a0a0b5', stepSize: 1 }, grid: { color: '#333' } }
                 },
-                plugins: {
-                    legend: { labels: { color: '#ffffff' } }
-                }
+                plugins: { legend: { labels: { color: '#ffffff' } } }
             }
         });
     }
@@ -204,11 +192,8 @@ HTML = """
 @app.route('/')
 def index():
     conn = get_db()
-    
-    # 1. Obtener amigos para el Feed (Ordenados por hora de actualización)
     amigos = conn.execute('SELECT * FROM amigos ORDER BY hora DESC').fetchall()
     
-    # 2. Obtener datos para el Dashboard General (Sumas totales)
     totales = conn.execute('SELECT SUM(cervezas) as cervezas, SUM(cubatas) as cubatas, SUM(chupitos) as chupitos FROM amigos').fetchone()
     totales_dict = {
         'cervezas': totales['cervezas'] or 0,
@@ -216,15 +201,9 @@ def index():
         'chupitos': totales['chupitos'] or 0
     }
     
-    # 3. Obtener el TOP para el Gráfico (Ordenado por total de bebidas)
-    top_query = '''
-        SELECT nombre, cervezas, cubatas, chupitos 
-        FROM amigos 
-        ORDER BY (cervezas + cubatas + chupitos) DESC
-    '''
+    top_query = 'SELECT nombre, cervezas, cubatas, chupitos FROM amigos ORDER BY (cervezas + cubatas + chupitos) DESC'
     top_amigos = conn.execute(top_query).fetchall()
     
-    # Preparamos los datos en formato JSON para mandárselos a JavaScript (Chart.js)
     nombres_lista = [a['nombre'] for a in top_amigos]
     cervezas_lista = [a['cervezas'] for a in top_amigos]
     cubatas_lista = [a['cubatas'] for a in top_amigos]
@@ -247,7 +226,8 @@ def agregar():
     if nombre:
         conn = get_db()
         try:
-            conn.execute('INSERT INTO amigos (nombre, hora) VALUES (?, ?)', (nombre, hora_actual))
+            # Por defecto, todos empiezan "Sobrios"
+            conn.execute('INSERT INTO amigos (nombre, hora, estado) VALUES (?, ?, ?)', (nombre, hora_actual, 'Sobrio'))
             conn.commit()
         except sqlite3.IntegrityError:
             pass 
@@ -260,23 +240,34 @@ def sumar():
     amigo_id = request.form['id']
     bebida = request.form['bebida'] 
     hora_actual = datetime.now().strftime("%H:%M")
+    
     if bebida in ['cervezas', 'cubatas', 'chupitos']:
         conn = get_db()
-        sql = f'UPDATE amigos SET {bebida} = {bebida} + 1, hora = ? WHERE id = ?'
-        conn.execute(sql, (hora_actual, amigo_id))
+        
+        # 1. Obtenemos lo que llevaba bebido hasta ahora
+        amigo = conn.execute('SELECT cervezas, cubatas, chupitos FROM amigos WHERE id = ?', (amigo_id,)).fetchone()
+        c = amigo['cervezas']
+        cu = amigo['cubatas']
+        ch = amigo['chupitos']
+        
+        # 2. Le sumamos la bebida nueva que acaba de pulsar
+        if bebida == 'cervezas': c += 1
+        elif bebida == 'cubatas': cu += 1
+        elif bebida == 'chupitos': ch += 1
+        
+        # 3. Calculamos automáticamente su nuevo nivel
+        nuevo_estado = calcular_estado(c, cu, ch)
+        
+        # 4. Actualizamos la base de datos con la nueva bebida y el nuevo estado
+        sql = f'UPDATE amigos SET {bebida} = ?, estado = ?, hora = ? WHERE id = ?'
+        
+        # Dependiendo de la bebida, pasamos la variable correcta al SQL
+        nueva_cantidad = c if bebida == 'cervezas' else (cu if bebida == 'cubatas' else ch)
+        
+        conn.execute(sql, (nueva_cantidad, nuevo_estado, hora_actual, amigo_id))
         conn.commit()
         conn.close()
-    return redirect(url_for('index'))
-
-@app.route('/estado', methods=['POST'])
-def cambiar_estado():
-    amigo_id = request.form['id']
-    nuevo_estado = request.form['estado']
-    hora_actual = datetime.now().strftime("%H:%M")
-    conn = get_db()
-    conn.execute('UPDATE amigos SET estado = ?, hora = ? WHERE id = ?', (nuevo_estado, hora_actual, amigo_id))
-    conn.commit()
-    conn.close()
+        
     return redirect(url_for('index'))
 
 @app.route('/resetear', methods=['POST'])
